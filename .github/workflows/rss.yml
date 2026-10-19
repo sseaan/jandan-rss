@@ -35,7 +35,9 @@ jobs:
             jandan-cache-
 
       - name: Generate feed
-        run: python3 jandan_rss.py --out public/feed.xml --pages 2
+        run: |
+          FEED_URL="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/feed.xml"
+          python3 jandan_rss.py --out public/feed.xml --pages 2 --self-url "$FEED_URL"
 
       - name: Add landing page
         run: |

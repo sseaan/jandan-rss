@@ -346,8 +346,13 @@ def build_rss(items, title="煎蛋 - 首页文章", link=BASE + "/", desc=None, 
         "  <channel>",
         "    <title>%s</title>" % html.escape(title),
         "    <link>%s</link>" % html.escape(link),
-        "    <atom:link href=\"%s\" rel=\"self\" type=\"application/rss+xml\" />"
-        % html.escape(self_url or link),
+    ]
+    if self_url:
+        out.append(
+            "    <atom:link href=\"%s\" rel=\"self\" type=\"application/rss+xml\" />"
+            % html.escape(self_url)
+        )
+    out += [
         "    <description>%s</description>" % html.escape(desc),
         "    <language>zh-CN</language>",
         "    <lastBuildDate>%s</lastBuildDate>" % now,
@@ -503,6 +508,7 @@ def main(argv=None):
     ap.add_argument("--interval", type=int, default=600, help="服务模式下的刷新间隔秒数")
     ap.add_argument("--cache-age", type=int, default=6 * 3600, help="正文缓存有效期秒数")
     ap.add_argument("--workers", type=int, default=6, help="并发抓取线程数")
+    ap.add_argument("--self-url", default=None, help="feed 自身的公网地址（写入 atom:link）")
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args(argv)
 
@@ -512,7 +518,7 @@ def main(argv=None):
 
     t0 = time.time()
     items, xml = generate(args.out, args.pages, not args.no_fulltext,
-                          args.cache_age, args.workers)
+                          args.cache_age, args.workers, self_url=args.self_url)
     if not args.quiet:
         newest = items[0]["pubDate"].strftime("%Y-%m-%d %H:%M") if items else "-"
         print("已生成 %s：%d 条，最新 %s，耗时 %.1fs"
