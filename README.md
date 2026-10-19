@@ -3,6 +3,14 @@
 把 [煎蛋网](https://jandan.net/) 首页的文章（煎蛋正文，不是无聊图/妹子图）转成标准 RSS 2.0。
 纯 Python 标准库，零依赖。
 
+**在线订阅地址**（GitHub Pages，每 30 分钟自动更新）：
+
+```
+https://sseaan.github.io/jandan-rss/feed.xml
+```
+
+预览页：<https://sseaan.github.io/jandan-rss/>
+
 输出内容：标题、原文链接、摘要、**正文全文 HTML（含配图）**、精确发布时间、分类、缩略图。
 自动跳过重复文章、缓存正文，重复运行只抓新文章。
 
