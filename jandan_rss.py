@@ -373,8 +373,6 @@ def build_rss(items, title="煎蛋 - 首页文章", link=BASE + "/", desc=None, 
                    % it["content"].replace("]]>", "]]&gt;"))
         if it["thumb"]:
             out.append('      <media:thumbnail url="%s" />' % html.escape(it["thumb"]))
-            out.append('      <enclosure url="%s" type="image/jpeg" length="0" />'
-                       % html.escape(it["thumb"]))
         out.append("    </item>")
     out += ["  </channel>", "</rss>", ""]
     return "\n".join(out)
