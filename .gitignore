@@ -7,3 +7,6 @@ page2.html
 article.html
 __pycache__/
 .DS_Store
+edgeone/node_modules/
+.edgeone/
+edgeone/.edgeone/

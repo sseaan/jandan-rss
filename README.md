@@ -1,91 +1,88 @@
 # 煎蛋 RSS
 
-把 [煎蛋网](https://jandan.net/) 首页的文章（煎蛋正文，不是无聊图/妹子图）转成标准 RSS 2.0。
-纯 Python 标准库，零依赖。
+煎蛋的官方 RSS 早就不能用了，`jandan.net/feed` 现在直接 403；RSSHub 倒是有个 `/jandan` 路由，但它也是拿 `i.jandan.net/feed/` 再加工，源站一抽风就跟着挂，公共实例还经常限流。所以干脆自己抓首页，重新拼一个 feed。
 
-**在线订阅地址**（GitHub Pages，每 30 分钟自动更新）：
+现在有两条部署路线，内容是一样的：标题、原文链接、正文全文（带图）、精确到分钟的发布时间、分类。区别只在更新方式和国内的访问速度。
+
+**GitHub Pages**，每 30 分钟自动更新一次：
 
 ```
 https://sseaan.github.io/jandan-rss/feed.xml
 ```
 
-预览页：<https://sseaan.github.io/jandan-rss/>
+**EdgeOne Makers**，按需刷新，国内访问更稳，部署完是 `https://<项目名>.edgeone.cool/feed.xml`。怎么部署见下面。
 
-输出内容：标题、原文链接、摘要、**正文全文 HTML（含配图）**、精确发布时间、分类、缩略图。
-自动跳过重复文章、缓存正文，重复运行只抓新文章。
+## GitHub Pages 这套
 
-## 本地试一下
+仓库里带了 `.github/workflows/rss.yml`，每 30 分钟跑一次 `jandan_rss.py`，把生成的 `feed.xml` 发布到 Pages。
+
+默认抓 2 页列表，大概 70 条，够阅读器补历史。Actions 里用 `actions/cache` 缓存了正文，所以定时任务每次只抓新增的那几篇，不会反复去打煎蛋。
+
+改抓取量就改 workflow 里的 `--pages`：`1` 是只要首页 35 条，`3` 是往前多翻一页。注意 GitHub 的 cron 本来就会延迟几分钟到十几分钟，别指望它准点。
+
+还有个坑：仓库连续 60 天没有提交，GitHub 会自动暂停定时任务，去 Actions 页面点一次 "Run workflow" 就恢复了。
+
+## EdgeOne Makers 这套
+
+`github.io` 在国内时好时坏，阅读器拉不到更新挺烦的。EdgeOne Makers 有免费额度、国内节点，拿来跑这种小抓取正合适，所以补了一份。
+
+代码在 [`edgeone/`](edgeone/)，是一个 Node 云函数（`cloud-functions/feed.js`），用 Blob 存生成的 XML。部署：
 
 ```bash
-cd jandan-rss
+cd edgeone
+npm i -g edgeone@latest          # 只装一次
+edgeone login --site china       # 会打开浏览器登录腾讯云
+edgeone makers deploy -n jandan-rss
+```
+
+第一次部署会自动生成 `edgeone.json`，之后在这个目录里直接 `edgeone makers deploy` 就行。本地想先看看效果可以 `edgeone makers dev`，跑在 `127.0.0.1:8088`。
+
+因为用到了 Blob 存缓存，这个方案必须登录后部署，没法走免登录发布。抓取和拼 RSS 的代码我在本地用 Node 直接跑过，文章、正文、图片都正常，剩下的就是把它推上去了。
+
+部署完的订阅地址是 `https://<项目名>.edgeone.cool/feed.xml`。`middleware.js` 把 `/feed.xml` 转发到了 `/feed`，直接订 `/feed` 也能用。
+
+它没有定时器，所以是懒刷新：生成的 XML 在 Blob 里缓存 15 分钟，过期之后第一个来拉取的请求顺手重新抓一遍，一般两三秒；这期间别的请求还是拿旧缓存，不会一起卡住。想立刻刷新就访问 `/feed?refresh=1`。
+
+能调的东西不多，都是 query 参数：`limit` 控制条数，默认 25，范围 5–40；`fulltext=0` 只输出摘要，不抓正文，快很多。
+
+两个提醒：Blob 的 namespace 是第一次调用时自动建的，不用去控制台点；`edgeone.cool` 这个预览域名在国内长期用最好绑一个已备案的域名，只是自己订阅的话一般也能凑合。
+
+## 本地跑
+
+不想部署，本机跑一下也行：
+
+```bash
 python3 jandan_rss.py --serve
 ```
 
-打开 <http://127.0.0.1:8765/> 预览，订阅地址是：
+然后订阅 `http://127.0.0.1:8765/feed.xml`，页面上能直接预览。电脑关了就没了，适合临时看看。
 
-```
-http://127.0.0.1:8765/feed.xml
-```
-
-这个地址可以填进任何 RSS 阅读器（NetNewsWire、Reeder、Foliate、Inoreader…）。
-缺点是电脑得开着；想 7×24 可用就部署到 GitHub Pages（见下）。
-
-只生成静态文件、不起服务：
+只想生成一个静态文件：
 
 ```bash
-python3 jandan_rss.py --out feed.xml          # 默认抓 2 页 ≈ 70 条
-python3 jandan_rss.py --pages 1 --out feed.xml # 只抓首页 35 条
-python3 jandan_rss.py --no-fulltext           # 只要摘要，不抓正文（快很多）
+python3 jandan_rss.py --out feed.xml
+python3 jandan_rss.py --pages 1 --out feed.xml    # 只要首页
+python3 jandan_rss.py --no-fulltext                # 不抓正文，快很多
 ```
-
-常用参数：
-
-| 参数 | 说明 |
-| --- | --- |
-| `--pages N` | 抓取列表页数，每页约 35 条，默认 2 |
-| `--no-fulltext` | 不请求文章页，只用列表页的摘要 |
-| `--serve` / `--port` | 启动本地服务 / 指定端口（默认 8765） |
-| `--interval` | 服务模式下多久重新抓一次，默认 600 秒 |
-| `--cache-age` | 正文缓存有效期，默认 6 小时 |
-| `--workers` | 并发数，默认 6，别调太高 |
 
 正文缓存在 `cache/articles.json`，删掉就是全量重抓。
 
-## 部署成公网 RSS（GitHub Pages，免费）
+## 抓取逻辑
 
-仓库里已经带了 `.github/workflows/rss.yml`：每 30 分钟跑一次，抓取后发布到 Pages。
+首页和 `/page/2` 拿文章列表，标题、摘要、缩略图、日期分组都在列表里；然后并发打开每篇文章，从 `div.post-content` 取正文，从「发布于 2026.10.19 , 11:53」这行取精确时间，从 `meta keywords` 取分类；最后拼成 RSS 2.0，正文塞 `content:encoded`，缩略图塞 `media:thumbnail`。
 
-1. 在 GitHub 建一个仓库（比如 `jandan-rss`），把本目录推上去：
+列表页只有日期没有具体时间，所以时间必须去文章页拿。单篇抓失败就退回摘要，不会让整个 feed 挂掉。
 
-   ```bash
-   git init && git add . && git commit -m "jandan rss"
-   git branch -M main
-   git remote add origin git@github.com:<你的用户名>/jandan-rss.git
-   git push -u origin main
-   ```
+煎蛋要是改版，改两个函数就行：Python 版的 `parse_listing` / `fetch_article`，EdgeOne 版的 `parseListing` / `parseArticle`。
 
-2. 仓库 **Settings → Pages → Build and deployment → Source** 选 **GitHub Actions**。
+## 踩过的坑
 
-3. 等第一次 Action 跑完，订阅地址就是：
+官方 `/feed` 返回 403，带浏览器 UA 也一样，所以完全没走官方源。
 
-   ```
-   https://<你的用户名>.github.io/jandan-rss/feed.xml
-   ```
+图片以前在 `moyu.im`，有 Referer 校验，RSS 阅读器里全是裂图；现在换成了 `img.wangmoyu.com`，实测不带 Referer 也能加载。哪天又加校验，在阅读器里补一条 Referer 规则，或者套一层图片代理。
 
-Actions 里用 `actions/cache` 保留了正文缓存，所以定时任务每次只抓新增的几篇，不会把煎蛋刷爆。
-想改频率就改 `cron`（GitHub 的定时任务可能延迟几分钟到十几分钟，正常）。
+GitHub Actions 跑在海外，EdgeOne 跑在国内，两边抓到的内容偶尔会有几分钟差异，正常。
 
-## 它是怎么工作的
+## 版权
 
-1. 抓 `https://jandan.net/` 和 `/page/2`，解析出文章列表（标题、摘要、缩略图、日期分组）。
-2. 并发打开每篇文章，取 `div.post-content` 里的正文、`发布于 2026.10.19 , 11:53` 的精确时间、`meta keywords` 里的分类。
-3. 清理正文里的广告/脚本/内联 iframe，图片补全为绝对地址，然后拼成 RSS 2.0（`content:encoded` 放全文，`media:thumbnail`/`enclosure` 放缩略图）。
-
-煎蛋自己的 `/feed` 已经返回 403，所以走的是「列表页 + 文章页」这条路，不依赖官方 feed。
-图片来自 `img.wangmoyu.com`，实测不带 Referer 也能正常加载；哪天又被防盗链了，在阅读器里加个 Referer 规则或套一层图片代理即可。
-
-## 注意
-
-- 抓取频率建议 ≥ 30 分钟，别拿它做全站爬虫。
-- 内容版权归煎蛋网及原作者所有，这个 feed 只适合自己订阅阅读，别二次分发。
-- 煎蛋偶尔会改版；选择器集中在 `parse_listing` / `fetch_article` 两个函数里，改版后改那里就行。
+内容都是煎蛋和原作者的，这个 feed 只适合自己订阅阅读，别拿去二次分发或者做站。

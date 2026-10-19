@@ -1,0 +1,8 @@
+{
+  "name": "jandan-rss-edgeone",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@edgeone/pages-blob": "^0.0.18"
+  }
+}

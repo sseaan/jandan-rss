@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>煎蛋 RSS</title>
+<link rel="alternate" type="application/rss+xml" title="煎蛋 - 首页文章" href="/feed.xml">
+<style>
+  body{font:16px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+       max-width:640px;margin:56px auto;padding:0 20px;color:#1c1c1e;background:#fff}
+  h1{font-size:22px;margin:0 0 10px}
+  p{color:#555;margin:12px 0}
+  code{background:#f2f2f7;padding:3px 8px;border-radius:6px;font-size:14px;word-break:break-all}
+  .box{border:1px solid #e5e5ea;border-radius:12px;padding:14px 16px;margin:22px 0}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  button{border:1px solid #d1d1d6;background:#fff;border-radius:8px;padding:6px 12px;font-size:14px;cursor:pointer}
+  button:hover{background:#f7f7fa}
+  a{color:#0a66c2}
+  .hint{font-size:13px;color:#8e8e93}
+</style>
+</head>
+<body>
+  <h1>煎蛋 · 首页文章 RSS</h1>
+  <p>跑在 EdgeOne Makers 上的一个小云函数：抓煎蛋首页的正文文章，带上全文和配图，输出成 RSS 2.0。</p>
+
+  <div class="box">
+    <p style="margin-top:0">订阅地址</p>
+    <p><code id="feed">/feed.xml</code></p>
+    <div class="row">
+      <button id="copy">复制地址</button>
+      <a href="/feed.xml">打开 feed.xml</a>
+      <span class="hint" id="status"></span>
+    </div>
+  </div>
+
+  <p>丢进任意阅读器就能用。缓存 15 分钟，过期后第一个来拉取的请求会顺手刷新一次。</p>
+  <p><a href="/feed?refresh=1">强制刷新</a>（会重新抓一遍，大概几秒）</p>
+
+  <script>
+    var feedUrl = location.origin + "/feed.xml";
+    document.getElementById("feed").textContent = feedUrl;
+
+    document.getElementById("copy").addEventListener("click", function () {
+      navigator.clipboard.writeText(feedUrl).then(function () {
+        document.getElementById("status").textContent = "已复制";
+      });
+    });
+  </script>
+</body>
+</html>
