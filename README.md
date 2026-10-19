@@ -10,7 +10,7 @@
 https://sseaan.github.io/jandan-rss/feed.xml
 ```
 
-**EdgeOne Makers**，按需刷新，国内访问更稳，部署完是 `https://<项目名>.edgeone.cool/feed.xml`。怎么部署见下面。
+**EdgeOne Makers**，按需刷新，适合手里有已备案域名、想让国内访问更稳的情况。代码在 `edgeone/`，怎么部署见下面。
 
 ## GitHub Pages 这套
 
@@ -37,15 +37,17 @@ edgeone makers deploy -n jandan-rss
 
 第一次部署会自动生成 `edgeone.json`，之后在这个目录里直接 `edgeone makers deploy` 就行。本地想先看看效果可以 `edgeone makers dev`，跑在 `127.0.0.1:8088`。
 
-因为用到了 Blob 存缓存，这个方案必须登录后部署，没法走免登录发布。抓取和拼 RSS 的代码我在本地用 Node 直接跑过，文章、正文、图片都正常，剩下的就是把它推上去了。
+因为用到了 Blob 存缓存，这个方案必须登录后部署，没法走免登录发布。这套已经在我自己的账号上跑起来了，25 条、正文和配图都正常。
 
-部署完的订阅地址是 `https://<项目名>.edgeone.cool/feed.xml`。`middleware.js` 把 `/feed.xml` 转发到了 `/feed`，直接订 `/feed` 也能用。
+部署完 CLI 会打一个带 `?eo_token=...&eo_time=...` 的预览地址，后面拼上 `/feed.xml` 就是订阅地址。`middleware.js` 把这个路径转到 `/feed`，直接订 `/feed` 也行。
+
+这里有个平台限制得说清楚：Makers 的项目域名和部署域名，从中国大陆访问必须带预览链接，而预览链接只有 3 小时，过期就是 401。这不是代码的问题，境外网络直接访问项目域名不受影响。想在国内长期订阅，只能去控制台「域名管理」绑一个已经备案的域名，之后 `https://你的域名/feed.xml` 就稳定了。
 
 它没有定时器，所以是懒刷新：生成的 XML 在 Blob 里缓存 15 分钟，过期之后第一个来拉取的请求顺手重新抓一遍，一般两三秒；这期间别的请求还是拿旧缓存，不会一起卡住。想立刻刷新就访问 `/feed?refresh=1`。
 
 能调的东西不多，都是 query 参数：`limit` 控制条数，默认 25，范围 5–40；`fulltext=0` 只输出摘要，不抓正文，快很多。
 
-两个提醒：Blob 的 namespace 是第一次调用时自动建的，不用去控制台点；`edgeone.cool` 这个预览域名在国内长期用最好绑一个已备案的域名，只是自己订阅的话一般也能凑合。
+Blob 的 namespace 是第一次调用时自动建的，不用去控制台配。
 
 ## 本地跑
 
