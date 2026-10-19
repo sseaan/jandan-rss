@@ -393,8 +393,11 @@ export async function onRequest(context) {
     }
   }
 
-  const fresh = meta && Date.now() - Number(meta.builtAt || 0) < TTL;
-  if (cached && fresh && !force) {
+  const age = Date.now() - Number(meta?.builtAt || 0);
+  const fresh = meta && age < TTL;
+  // 手动刷新留个 1 分钟的下限，免得被人拿着 ?refresh=1 反复打
+  const canForce = force && age > 60 * 1000;
+  if (cached && fresh && !canForce) {
     return rssResponse(cached, {
       cache: "HIT",
       builtAt: meta.builtAt,
