@@ -1,0 +1,9 @@
+cache/
+public/
+*.log
+feed*.xml
+home.html
+page2.html
+article.html
+__pycache__/
+.DS_Store

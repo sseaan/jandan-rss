@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>煎蛋 RSS</title>
+<link rel="alternate" type="application/rss+xml" title="煎蛋 - 首页文章" href="feed.xml">
+<style>
+  body{font:16px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+       max-width:640px;margin:56px auto;padding:0 20px;color:#1c1c1e;background:#fff}
+  h1{font-size:22px;margin-bottom:8px}
+  p{color:#555}
+  code{background:#f2f2f7;padding:3px 8px;border-radius:6px;font-size:14px;word-break:break-all}
+  .box{border:1px solid #e5e5ea;border-radius:12px;padding:16px 18px;margin:24px 0}
+  a{color:#0a66c2}
+</style>
+</head>
+<body>
+  <h1>煎蛋 · 首页文章 RSS</h1>
+  <p>把 <a href="https://jandan.net/">煎蛋网</a>首页的文章（标题、摘要、正文、配图、发布时间）转换成 RSS 2.0，每 30 分钟更新。</p>
+  <div class="box">
+    <p>订阅地址：</p>
+    <p><code id="feed"></code></p>
+    <p><a href="feed.xml">直接查看 feed.xml</a></p>
+  </div>
+  <p>在任意 RSS 阅读器里「添加订阅源 / 输入网址」并粘贴上面的地址即可。内容版权归煎蛋网及原作者所有。</p>
+  <script>
+    document.getElementById('feed').textContent = location.href.replace(/index\.html$/, '') + 'feed.xml';
+  </script>
+</body>
+</html>
