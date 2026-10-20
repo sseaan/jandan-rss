@@ -4,9 +4,9 @@
 
 煎蛋官方 `/feed` 已经 403 很久了，RSSHub 的 `/jandan` 路由也是拿 `i.jandan.net/feed/` 二次加工，源站一抽风就跟着挂，公共实例还常被限流。所以这里直接抓首页列表，再逐篇取正文自己生成 feed。
 
-- **不用改订阅地址**：两条部署路线产出的内容完全一致，只有更新方式不同。
-- **只用标准库 / 零依赖**：Python 版无需 `pip install`，EdgeOne 版只依赖平台自带的 Blob。
-- **带缓存**：只抓新增文章，不会每轮都去打煎蛋。
+- **一份产物，两处托管**：GitHub Actions 每 12 小时生成一次 `public/`，GitHub Pages 和 EdgeOne 用同一份静态文件，内容完全一致。
+- **零依赖**：只用 Python 标准库，不需要 `pip install`。
+- **带缓存**：正文缓存到 `cache/articles.json`，重复运行只抓新增文章。
 
 ## 目录
 
@@ -15,6 +15,7 @@
 - [快速开始](#快速开始)
 - [部署：GitHub Pages](#部署github-pages)
 - [部署：EdgeOne Makers](#部署edgeone-makers)
+- [CI 流程](#ci-流程)
 - [配置项](#配置项)
 - [实现说明](#实现说明)
 - [已知限制](#已知限制)
@@ -24,24 +25,21 @@
 
 | 方案 | 订阅地址 | 更新方式 |
 | --- | --- | --- |
-| GitHub Pages | `https://sseaan.github.io/jandan-rss/feed.xml` | GitHub Actions 每 30 分钟 |
-| EdgeOne Makers | `https://<你的域名>/feed.xml` | 请求触发，缓存 15 分钟 |
+| GitHub Pages | `https://sseaan.github.io/jandan-rss/feed.xml` | GitHub Actions 每 12 小时 |
+| EdgeOne Makers | `https://<你的域名>/feed.xml` | GitHub Actions 每 12 小时直传 |
 
-`github.io` 在国内时通时不通；EdgeOne Makers 有国内节点但项目默认域名在国内必须带预览参数（详见[已知限制](#已知限制)），长期订阅需要绑一个已备案域名。
+`github.io` 在国内时通时不通；EdgeOne Makers 有国内节点，但项目默认域名在国内访问需要预览参数，长期订阅需要绑一个已备案域名（详见[已知限制](#已知限制)）。
 
 ## 目录结构
 
 ```
 jandan-rss/
-├── .github/workflows/rss.yml    # CI：定时抓取 → 构建 → 发布 GitHub Pages
-├── jandan_rss.py                # Python 版：抓取、生成 feed、本地预览服务（CLI 入口）
-├── index.html                   # 落地页（EdgeOne 挂在根上，Pages 复制进 public/）
-├── cloud-functions/feed.js      # EdgeOne 云函数：抓取 + 生成 RSS，路由 /feed
-├── middleware.js                # 把 /feed.xml 重写到 /feed（兜底，见 edgeone.json）
-├── edgeone.json                 # EdgeOne 构建/运行配置：Node 版本、函数超时、rewrite
-├── package.json                 # EdgeOne 依赖：@edgeone/pages-blob
+├── .github/workflows/rss.yml    # CI：12 小时抓取 → 生成 public/ → Pages + EdgeOne
+├── jandan_rss.py                # 抓取、生成 feed、本地预览服务（CLI 入口）
+├── index.html                   # 落地页，CI 复制进 public/
+├── edgeone.json                 # EdgeOne 静态配置：/feed 重写、feed 缓存头
 ├── cache/articles.json          # 正文缓存（不入库，删掉即全量重抓）
-└── feed.xml                     # 生成产物（不入库，CI 里输出到 public/）
+└── public/                      # CI 产物（不入库）
 ```
 
 ## 快速开始
@@ -56,9 +54,9 @@ cd jandan-rss
 **生成静态文件**
 
 ```bash
-python3 jandan_rss.py --out feed.xml          # 默认抓 2 页列表，带全文
-python3 jandan_rss.py --pages 1 --out feed.xml # 只抓首页
-python3 jandan_rss.py --no-fulltext            # 不抓正文，只输出摘要，快很多
+python3 jandan_rss.py --out public/feed.xml --pages 2   # 默认抓 2 页，约 70 条，带全文
+python3 jandan_rss.py --pages 1 --out feed.xml          # 只抓首页
+python3 jandan_rss.py --no-fulltext                     # 不抓正文，只输出摘要，快很多
 ```
 
 **本地起服务预览**
@@ -75,74 +73,66 @@ python3 jandan_rss.py --serve                  # http://127.0.0.1:8765
 
 ## 部署：GitHub Pages
 
-仓库已内置 [`.github/workflows/rss.yml`](.github/workflows/rss.yml)，推送到 `main` 后自动完成以下流程：
+仓库已内置 [.github/workflows/rss.yml](.github/workflows/rss.yml)，推送到 `main` 后自动完成：
 
-1. `actions/cache` 恢复 `cache/` 目录（正文缓存）
-2. 运行 `jandan_rss.py --out public/feed.xml --pages 2 --self-url <Pages 地址>`
-3. 把根目录的 `index.html` 复制为 `public/index.html`
-4. `actions/upload-pages-artifact` + `actions/deploy-pages` 发布
+1. `actions/cache` 恢复 `cache/` 目录（正文缓存）；
+2. 运行 `jandan_rss.py --out public/feed.xml --pages 2`；
+3. 复制 `index.html` 和 `edgeone.json` 到 `public/`；
+4. 校验 feed 至少 20 条；
+5. `actions/upload-pages-artifact` + `actions/deploy-pages` 发布。
 
 首次使用请在仓库 **Settings → Pages → Source** 选择 **GitHub Actions**。
 
-调整抓取量改 workflow 里的 `--pages`：`1` 只要首页约 35 条，`3` 再往前多翻一页。GitHub 的 cron 本身会有几分钟到十几分钟的延迟，不要指望准点。
-
 ## 部署：EdgeOne Makers
 
-云函数在 [`cloud-functions/feed.js`](cloud-functions/feed.js)（路由 `/feed`），落地页是根目录的 `index.html`，生成的 XML 和元信息存进 Blob。**仓库根目录本身就是可部署目录**，fork 之后不用改根目录 / 输出目录就能部署。
+EdgeOne 这边是**纯静态直传**：CI 不跑云函数，也不让 EdgeOne 构建，直接把 `public/` 上传。因此：
 
-### fork → 控制台导入 → 部署
+- 项目必须是 **Upload（直传）类型**；GitHub 集成类型的项目不能用 CLI 更新，会报 `Provider 'Github'`。
+- 如果已有同名 GitHub 集成项目，先在控制台删除，再让 CI 创建同名 Upload 项目。
+- 删除旧项目后默认域名会变；要保留订阅地址，请在控制台给新项目绑定自定义域名。
 
-1. fork 本仓库（或直接用）。
-2. 控制台 → Makers → 新建项目 → **导入 GitHub 仓库** → 选你的仓库。
-3. 构建设置保持默认：根目录 `./`、输出目录 `/`、安装命令 `npm install`，Node.js 版本选 20。
-4. 点部署；之后往 `main` push 就会自动重新构建部署。
+### 一次性配置
 
-关键配置已经写进 [`edgeone.json`](edgeone.json)，会覆盖控制台设置，不靠手填：
+1. 控制台 → Makers → 删除旧的 `jandan-rss` 项目（如果它是 GitHub 集成类型）。
+2. 控制台 → **API Token** → 新建，复制 token。
+3. GitHub 仓库 → **Settings → Secrets and variables → Actions** → 新建 secret：`EDGEONE_API_TOKEN`。
+4. 推送 `main`，workflow 会自动创建/更新 `jandan-rss` 项目并上传 `public/`。
 
-| 字段 | 值 | 为什么 |
-| --- | --- | --- |
-| `nodeVersion` | `20.18.0` | `@edgeone/pages-blob` 要求 Node ≥18，`feed.js` 里的 `AbortSignal.timeout` 要 17.3+ |
-| `buildCommand` | `npm run build` | `package.json` 里是个 echo 空构建，防止预设成别的框架后直接跑 `next build` 之类挂掉 |
-| `installCommand` | `npm install` | 只装 `@edgeone/pages-blob` 一个包 |
-| `cloudFunctions.maxDuration` | `60` | 抓 25 篇正文会超过默认的 30 秒 |
-| `rewrites` | `/feed.xml → /feed` | 订阅地址保留 `.xml` 后缀（`middleware.js` 也做了一份，双保险） |
+### 手动部署（可选）
+
+本地已经登录 EdgeOne CLI 时：
+
+```bash
+edgeone login
+edgeone makers deploy ./public -n jandan-rss
+```
+
+`-n` 表示项目名：不存在就创建，存在且是 Upload 类型就更新。
 
 ### 订阅地址
 
-部署完控制台会给项目域名，后面拼 `/feed.xml`（或 `/feed`）就是 feed。项目默认域名在国内访问需要带预览参数（`?eo_token=...&eo_time=...`），详见[已知限制](#已知限制)。
+部署完控制台会给项目域名，后面拼 `/feed.xml` 或 `/feed` 都能用：
 
-### CLI 直传（可选）
+- `/feed.xml`：静态文件本身；
+- `/feed`：由 [edgeone.json](edgeone.json) 重写到 `/feed.xml`，兼容旧订阅。
 
-```bash
-npm i -g edgeone@latest          # 只需一次
-edgeone login --site china       # 会打开浏览器登录腾讯云
-edgeone makers link -n <项目名>  # 关联控制台已建的项目
-edgeone makers deploy
-```
+默认域名在国内访问需要预览参数（`?eo_token=...`），过期即 401；境外网络直接访问项目域名不受影响。要在国内长期订阅，请在控制台「域名管理」绑定一个已备案域名。
 
-CLI **只支持直传（Upload）类型的项目**。如果同名项目是从 GitHub 导入的，会直接报错：
+## CI 流程
 
 ```
-Deployment failed: [getOrCreateProject] Project jandan-rss exists but has
-Provider 'Github'. ... Only projects with Provider 'Upload' are supported.
+schedule（每 12 小时，北京时间 09:00 / 21:00）
+  └─ build
+       ├─ actions/cache 恢复 cache/
+       ├─ jandan_rss.py → public/feed.xml（约 70 条全文）
+       ├─ 复制 index.html、edgeone.json
+       ├─ 校验 XML 可解析且条数 ≥ 20
+       ├─ upload-artifact
+       ├─ deploy-pages
+       └─ deploy-edgeone（TencentEdgeOne/edgeone-pages-action@v1）
 ```
 
-解法：换个项目名（新建直传项目），或先在控制台删掉 GitHub 项目再部署。项目一旦是 GitHub 集成类型，后续更新走 push，不用 CLI。另外因为要用 Blob 存缓存，CLI 这条路必须登录后部署，无法免登录发布（Blob namespace 首次调用时自动建）。
-
-### 本地调试
-
-```bash
-npm install
-edgeone makers link -n <项目名>  # 用了 Blob，必须先关联项目，否则 dev 起不来
-edgeone makers dev               # http://127.0.0.1:8088
-```
-
-两个 CLI 调试器的坑（不影响线上）：
-
-- dev server 不实现 `edgeone.json` 的 `rewrites`，本地请求 `/feed.xml` 会 404，验证请直接打 `/feed`；
-- dev server 给中间件注入的 `hookCtx` 是空的，`middleware.js` 会抛 `Cannot read properties of undefined (reading 'fetch')` 并被兜底成 404。
-
-所以 `/feed.xml` 这条重写只能在部署后验证：上线先 `curl -I <域名>/feed.xml`，若 404，订阅地址直接换成 `/feed`，内容完全一样。
+`push` 到 `main` 也会触发一次，方便改完配置立即验证。GitHub 的 cron 本身会有几分钟到十几分钟的延迟，不要指望准点。
 
 ## 配置项
 
@@ -158,18 +148,10 @@ edgeone makers dev               # http://127.0.0.1:8088
 | `--interval SEC` | `600` | 服务模式下的重建间隔 |
 | `--cache-age SEC` | `21600` | 正文缓存有效期（6 小时） |
 | `--workers N` | `6` | 并发抓取线程数 |
-| `--self-url URL` | 无 | 写入 `atom:link rel="self"` 的公网地址 |
+| `--self-url URL` | 无 | 写入 `atom:link rel="self"`；CI 不传，因为同一份 feed 有两个域名 |
 | `--quiet` | 关 | 不打印生成摘要 |
 
-### EdgeOne 查询参数
-
-| 参数 | 默认值 | 说明 |
-| --- | --- | --- |
-| `limit` | `25` | 条数，范围 5–40 |
-| `fulltext` | 开 | 传 `0` 只输出摘要，不抓正文 |
-| `refresh` | 关 | 传 `1` 强制刷新（距上次构建至少 60 秒，防止被反复触发） |
-
-响应头里带 `X-Feed-Cache`（`HIT` / `MISS` / `STALE`）、`X-Feed-Items`、`X-Feed-Built`，方便排查缓存状态。
+静态版没有 `limit` / `fulltext` / `refresh` 查询参数，也没有请求时刷新；更新只由 CI 触发。
 
 ## 实现说明
 
@@ -199,16 +181,22 @@ RSS 2.0：content:encoded 放全文，media:thumbnail 放缩略图
 - 列表页只有日期没有时间，所以**发布时间必须去文章页取**；取不到时退回列表页日期（当日 12:00）。
 - 单篇抓取失败不会让整个 feed 挂掉，只退回摘要。
 - Python 版正文缓存到 `cache/articles.json`，按 URL 记录 `content` / `categories` / `pubDate` / `fetched_at`，重复运行只抓新文章。
-- EdgeOne 版把 XML 和 `{builtAt, count}` 元信息一起写进 Blob，**懒刷新**：缓存过期后由第一个来访的请求顺手重建，其余请求继续读旧缓存，不会一起卡住；重建失败时返回上一次的缓存（`STALE`）。
-- 煎蛋若改版，只需改两个函数：Python 的 `parse_listing` / `fetch_article`，EdgeOne 的 `parseListing` / `parseArticle`。
+- 只保留一套解析器（Python）。CI 生成静态文件后，Pages 和 EdgeOne 都只是托管，不再各自抓取。
+- `<ttl>` 是 720 分钟，和 12 小时更新节奏一致。
+- 煎蛋若改版，只需改 `parse_listing` / `fetch_article` 两处。
+
+## 开发
+
+本仓库的提交使用 YubiKey OpenPGP 签名。仓库配置了 `commit.gpgsign=true`，提交时按提示触摸 YubiKey 即可。
 
 ## 已知限制
 
+- **12 小时更新 + Actions 延迟**：最新一篇最多可能晚 12 小时以上；一次运行失败会变成 24 小时空窗。建议加一条失败/漏跑告警（例如 healthchecks.io），并在 EdgeOne 保留上一次成功部署以便回滚。
 - **GitHub Actions 的 cron 会延迟**，几分钟到十几分钟不等；仓库连续 60 天没有提交，定时任务会被自动暂停，去 Actions 页面点一次 *Run workflow* 即可恢复。
-- **EdgeOne 预览链接只有 3 小时**：Makers 的项目域名和部署域名从中国大陆访问必须带预览参数（`?eo_token=...`），过期即 401。这不是代码问题，境外网络直接访问项目域名不受影响；要在国内长期订阅，需在控制台「域名管理」绑定一个已备案域名。
-- **EdgeOne 部署的就是仓库根目录**：`README.md`、`jandan_rss.py` 这些也会被当成静态资源发布（都是公开内容，无所谓）。但如果你跑过 Python 生成器留下根目录的 `feed.xml`，再用 CLI 直传，这个静态文件会一起打上去、盖住动态 feed；要么先删掉它，要么走 GitHub 集成（只发布 git 里的文件，`feed*.xml` 已被 `.gitignore` 排除）。
+- **EdgeOne 预览链接**：项目默认域名和部署域名从中国大陆访问需要预览参数，过期即 401。这不是代码问题，境外网络直接访问不受影响；要在国内长期订阅，需绑定已备案域名。
+- **EdgeOne 项目类型**：直传只能更新 Upload 类型项目。删除旧项目后默认域名会变；如果订阅地址不能变，请提前绑定自定义域名，或改用新的项目名并同步修改 workflow。
+- **静态版没有查询参数**：`?limit=`、`?fulltext=0`、`?refresh=1` 都不再支持；需要不同条数就改 workflow 里的 `--pages`。
 - **图片**：煎蛋的图以前在 `moyu.im`，有 Referer 校验会导致阅读器裂图；现在换成 `img.wangmoyu.com`，实测不带 Referer 也能加载。若哪天又加校验，可在阅读器补一条 Referer 规则，或套一层图片代理。
-- **两套部署抓到的内容偶尔差几分钟**：Actions 跑在海外，EdgeOne 跑在国内，属正常现象。
 - 官方 `/feed` 返回 403，带浏览器 UA 也一样，因此完全没有走官方源。
 
 ## 免责声明

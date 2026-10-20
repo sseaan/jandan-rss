@@ -2,7 +2,8 @@ name: Update RSS feed
 
 on:
   schedule:
-    - cron: "0 */2 * * *"
+    # 每 12 小时一次；UTC 01/13 = 北京时间 09:00/21:00
+    - cron: "0 1,13 * * *"
   workflow_dispatch:
   push:
     branches: [main]
@@ -13,7 +14,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: rss-deploy
   cancel-in-progress: true
 
 jobs:
@@ -36,24 +37,69 @@ jobs:
 
       - name: Generate feed
         run: |
-          FEED_URL="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}/feed.xml"
-          python3 jandan_rss.py --out public/feed.xml --pages 2 --self-url "$FEED_URL"
-
-      - name: Add landing page
-        run: |
-          mkdir -p public
+          python3 jandan_rss.py --out public/feed.xml --pages 2 --quiet
           cp index.html public/index.html
+          cp edgeone.json public/edgeone.json
 
-      - uses: actions/upload-pages-artifact@v3
+      - name: Validate feed
+        run: |
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          root = ET.parse("public/feed.xml").getroot()
+          items = root.findall("./channel/item")
+          assert len(items) >= 20, f"only {len(items)} items"
+          print(f"feed ok: {len(items)} items")
+          PY
+
+      - uses: actions/upload-artifact@v4
         with:
+          name: public
           path: public
+          retention-days: 1
 
-  deploy:
+  deploy-pages:
     needs: build
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: public
+          path: public
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  deploy-edgeone:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: public
+          path: public
+
+      - name: Check EdgeOne token
+        id: token
+        env:
+          EDGEONE_API_TOKEN: ${{ secrets.EDGEONE_API_TOKEN }}
+        run: |
+          if [ -n "$EDGEONE_API_TOKEN" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::EDGEONE_API_TOKEN is not set; skipping EdgeOne deploy"
+          fi
+
+      - uses: TencentEdgeOne/edgeone-pages-action@v1
+        if: steps.token.outputs.present == 'true'
+        with:
+          token: ${{ secrets.EDGEONE_API_TOKEN }}
+          project-name: jandan-rss
+          build-path: ./public

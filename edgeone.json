@@ -1,14 +1,23 @@
 {
-  "buildCommand": "npm run build",
-  "installCommand": "npm install",
-  "nodeVersion": "20.18.0",
   "rewrites": [
     {
-      "source": "/feed.xml",
-      "destination": "/feed"
+      "source": "/feed",
+      "destination": "/feed.xml"
     }
   ],
-  "cloudFunctions": {
-    "maxDuration": 60
-  }
+  "headers": [
+    {
+      "source": "/feed.xml",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=600"
+        },
+        {
+          "key": "Content-Type",
+          "value": "application/rss+xml; charset=utf-8"
+        }
+      ]
+    }
+  ]
 }

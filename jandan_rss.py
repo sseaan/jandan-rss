@@ -357,7 +357,7 @@ def build_rss(items, title="煎蛋 - 首页文章", link=BASE + "/", desc=None, 
         "    <language>zh-CN</language>",
         "    <lastBuildDate>%s</lastBuildDate>" % now,
         "    <generator>jandan-rss</generator>",
-        "    <ttl>30</ttl>",
+        "    <ttl>720</ttl>",
     ]
     for it in items:
         out.append("    <item>")
