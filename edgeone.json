@@ -18,6 +18,19 @@
           "value": "application/rss+xml; charset=utf-8"
         }
       ]
+    },
+    {
+      "source": "/feed",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=600"
+        },
+        {
+          "key": "Content-Type",
+          "value": "application/rss+xml; charset=utf-8"
+        }
+      ]
     }
   ]
 }
