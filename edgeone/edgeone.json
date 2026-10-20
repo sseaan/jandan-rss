@@ -1,0 +1,14 @@
+{
+  "buildCommand": "npm run build",
+  "installCommand": "npm install",
+  "nodeVersion": "20.18.0",
+  "rewrites": [
+    {
+      "source": "/feed.xml",
+      "destination": "/feed"
+    }
+  ],
+  "cloudFunctions": {
+    "maxDuration": 60
+  }
+}

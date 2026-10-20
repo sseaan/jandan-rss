@@ -39,7 +39,8 @@ jandan-rss/
 │   └── index.html               # GitHub Pages 的落地页
 ├── edgeone/                     # EdgeOne Makers 版（Node 云函数）
 │   ├── cloud-functions/feed.js  # 抓取 + 生成 RSS，路由 /feed
-│   ├── middleware.js            # 把 /feed.xml 重写到 /feed
+│   ├── middleware.js            # 把 /feed.xml 重写到 /feed（兜底，见 edgeone.json）
+│   ├── edgeone.json             # 构建/运行配置：Node 版本、函数超时、/feed.xml 重写
 │   ├── index.html               # EdgeOne 落地页（含复制订阅地址、强制刷新）
 │   ├── package.json             # 依赖：@edgeone/pages-blob
 │   └── .env / .edgeone/         # 本地 CLI 凭据与项目元数据（不入库）
@@ -91,7 +92,31 @@ python3 jandan_rss.py --serve                  # http://127.0.0.1:8765
 
 ## 部署：EdgeOne Makers
 
-代码在 [`edgeone/`](edgeone/)，是一个 Node 云函数，用 Blob 存生成的 XML 和元信息。
+代码在 [`edgeone/`](edgeone/)，是一个 Node 云函数（`cloud-functions/feed.js`，路由 `/feed`）+ 静态落地页，用 Blob 存生成的 XML 和元信息。仓库根目录不是可部署目录（根上是 Python 脚本和 `site/`），**可部署目录是 `edgeone/`**。
+
+### 方式 A：GitHub 集成（push 即部署）
+
+控制台 → Makers → 新建项目 → **导入 GitHub 仓库** → 选 `sseaan/jandan-rss`，构建配置按下面填：
+
+| 配置项 | 值 |
+| --- | --- |
+| 根目录 | `edgeone` |
+| 框架预设 | 无（不选） |
+| 安装命令 | `npm install` |
+| 构建命令 | `npm run build` |
+| 输出目录 | 默认 `/` |
+| Node.js 版本 | 20 |
+
+这些值已经写进 [`edgeone/edgeone.json`](edgeone/edgeone.json)，会覆盖控制台设置：
+
+- `nodeVersion: 20.18.0`：`@edgeone/pages-blob` 要求 Node ≥18，`feed.js` 里的 `AbortSignal.timeout` 要 Node 17.3+；
+- `buildCommand: npm run build`：`package.json` 里是个 echo 空构建，防止控制台把框架预设成别的项目、跑来跑 `next build` 之类直接失败；
+- `cloudFunctions.maxDuration: 60`：抓 25 篇正文别被默认的 30 秒掐断；
+- `rewrites: /feed.xml → /feed`：和 `middleware.js` 一起保证订阅地址带 `.xml`。
+
+配好后 `git push` 到 `main` 自动构建部署，以后改代码也只需 push。
+
+### 方式 B：CLI 直传
 
 ```bash
 cd edgeone
@@ -100,11 +125,32 @@ edgeone login --site china       # 会打开浏览器登录腾讯云
 edgeone makers deploy -n jandan-rss
 ```
 
-首次部署会自动生成 `edgeone.json`，之后在该目录直接 `edgeone makers deploy` 即可。本地调试用 `edgeone makers dev`，跑在 `127.0.0.1:8088`。
+CLI **只支持直传（Upload）类型的项目**。如果同名项目是从 GitHub 导入的，会直接报错：
 
-因为要用 Blob 存缓存，这条路线必须登录后部署，无法免登录发布。Blob 的 namespace 是首次调用时自动创建的，不用去控制台配置。
+```
+Deployment failed: [getOrCreateProject] Project jandan-rss exists but has
+Provider 'Github'. ... Only projects with Provider 'Upload' are supported.
+```
 
-**订阅地址**：部署完 CLI 会打印一个带 `?eo_token=...&eo_time=...` 的预览地址，后面拼上 `/feed.xml`（或 `/feed`）即可；`middleware.js` 会把这个路径重写到 `feed.js`。
+两种解法：换个名字（`-n jandan-rss-cli`，会新建一个直传项目），或先在控制台删掉 GitHub 项目再部署。项目一旦是 GitHub 集成类型，后续更新就走 push，不再用 CLI。
+
+因为要用 Blob 存缓存，这条路必须登录后部署，无法免登录发布。Blob 的 namespace 是首次调用时自动创建的，不用去控制台配置。
+
+**订阅地址**：部署完 CLI 会打印一个带 `?eo_token=...&eo_time=...` 的预览地址，后面拼上 `/feed.xml`（或 `/feed`）即可。
+
+### 本地调试
+
+```bash
+cd edgeone
+edgeone makers dev               # http://127.0.0.1:8088
+```
+
+两个 CLI 调试器的坑（不影响线上）：
+
+- dev server 不实现 `edgeone.json` 的 `rewrites`，本地请求 `/feed.xml` 会 404，验证请直接打 `/feed`；
+- dev server 给中间件注入的 `hookCtx` 是空的，`middleware.js` 会抛 `Cannot read properties of undefined (reading 'fetch')` 并被兜底成 404。
+
+所以 `/feed.xml` 这条重写只能在部署后验证：上线先 `curl -I <域名>/feed.xml`，若 404，订阅地址直接换成 `/feed`，内容完全一样。
 
 ## 配置项
 
