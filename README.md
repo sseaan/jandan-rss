@@ -35,15 +35,11 @@
 jandan-rss/
 ├── .github/workflows/rss.yml    # CI：定时抓取 → 构建 → 发布 GitHub Pages
 ├── jandan_rss.py                # Python 版：抓取、生成 feed、本地预览服务（CLI 入口）
-├── site/
-│   └── index.html               # GitHub Pages 的落地页
-├── edgeone/                     # EdgeOne Makers 版（Node 云函数）
-│   ├── cloud-functions/feed.js  # 抓取 + 生成 RSS，路由 /feed
-│   ├── middleware.js            # 把 /feed.xml 重写到 /feed（兜底，见 edgeone.json）
-│   ├── edgeone.json             # 构建/运行配置：Node 版本、函数超时、/feed.xml 重写
-│   ├── index.html               # EdgeOne 落地页（含复制订阅地址、强制刷新）
-│   ├── package.json             # 依赖：@edgeone/pages-blob
-│   └── .env / .edgeone/         # 本地 CLI 凭据与项目元数据（不入库）
+├── index.html                   # 落地页（EdgeOne 挂在根上，Pages 复制进 public/）
+├── cloud-functions/feed.js      # EdgeOne 云函数：抓取 + 生成 RSS，路由 /feed
+├── middleware.js                # 把 /feed.xml 重写到 /feed（兜底，见 edgeone.json）
+├── edgeone.json                 # EdgeOne 构建/运行配置：Node 版本、函数超时、rewrite
+├── package.json                 # EdgeOne 依赖：@edgeone/pages-blob
 ├── cache/articles.json          # 正文缓存（不入库，删掉即全量重抓）
 └── feed.xml                     # 生成产物（不入库，CI 里输出到 public/）
 ```
@@ -83,7 +79,7 @@ python3 jandan_rss.py --serve                  # http://127.0.0.1:8765
 
 1. `actions/cache` 恢复 `cache/` 目录（正文缓存）
 2. 运行 `jandan_rss.py --out public/feed.xml --pages 2 --self-url <Pages 地址>`
-3. 把 `site/index.html` 复制为 `public/index.html`
+3. 把根目录的 `index.html` 复制为 `public/index.html`
 4. `actions/upload-pages-artifact` + `actions/deploy-pages` 发布
 
 首次使用请在仓库 **Settings → Pages → Source** 选择 **GitHub Actions**。
@@ -92,37 +88,36 @@ python3 jandan_rss.py --serve                  # http://127.0.0.1:8765
 
 ## 部署：EdgeOne Makers
 
-代码在 [`edgeone/`](edgeone/)，是一个 Node 云函数（`cloud-functions/feed.js`，路由 `/feed`）+ 静态落地页，用 Blob 存生成的 XML 和元信息。仓库根目录不是可部署目录（根上是 Python 脚本和 `site/`），**可部署目录是 `edgeone/`**。
+云函数在 [`cloud-functions/feed.js`](cloud-functions/feed.js)（路由 `/feed`），落地页是根目录的 `index.html`，生成的 XML 和元信息存进 Blob。**仓库根目录本身就是可部署目录**，fork 之后不用改根目录 / 输出目录就能部署。
 
-### 方式 A：GitHub 集成（push 即部署）
+### fork → 控制台导入 → 部署
 
-控制台 → Makers → 新建项目 → **导入 GitHub 仓库** → 选 `sseaan/jandan-rss`，构建配置按下面填：
+1. fork 本仓库（或直接用）。
+2. 控制台 → Makers → 新建项目 → **导入 GitHub 仓库** → 选你的仓库。
+3. 构建设置保持默认：根目录 `./`、输出目录 `/`、安装命令 `npm install`，Node.js 版本选 20。
+4. 点部署；之后往 `main` push 就会自动重新构建部署。
 
-| 配置项 | 值 |
-| --- | --- |
-| 根目录 | `edgeone` |
-| 框架预设 | 无（不选） |
-| 安装命令 | `npm install` |
-| 构建命令 | `npm run build` |
-| 输出目录 | 默认 `/` |
-| Node.js 版本 | 20 |
+关键配置已经写进 [`edgeone.json`](edgeone.json)，会覆盖控制台设置，不靠手填：
 
-这些值已经写进 [`edgeone/edgeone.json`](edgeone/edgeone.json)，会覆盖控制台设置：
+| 字段 | 值 | 为什么 |
+| --- | --- | --- |
+| `nodeVersion` | `20.18.0` | `@edgeone/pages-blob` 要求 Node ≥18，`feed.js` 里的 `AbortSignal.timeout` 要 17.3+ |
+| `buildCommand` | `npm run build` | `package.json` 里是个 echo 空构建，防止预设成别的框架后直接跑 `next build` 之类挂掉 |
+| `installCommand` | `npm install` | 只装 `@edgeone/pages-blob` 一个包 |
+| `cloudFunctions.maxDuration` | `60` | 抓 25 篇正文会超过默认的 30 秒 |
+| `rewrites` | `/feed.xml → /feed` | 订阅地址保留 `.xml` 后缀（`middleware.js` 也做了一份，双保险） |
 
-- `nodeVersion: 20.18.0`：`@edgeone/pages-blob` 要求 Node ≥18，`feed.js` 里的 `AbortSignal.timeout` 要 Node 17.3+；
-- `buildCommand: npm run build`：`package.json` 里是个 echo 空构建，防止控制台把框架预设成别的项目、跑来跑 `next build` 之类直接失败；
-- `cloudFunctions.maxDuration: 60`：抓 25 篇正文别被默认的 30 秒掐断；
-- `rewrites: /feed.xml → /feed`：和 `middleware.js` 一起保证订阅地址带 `.xml`。
+### 订阅地址
 
-配好后 `git push` 到 `main` 自动构建部署，以后改代码也只需 push。
+部署完控制台会给项目域名，后面拼 `/feed.xml`（或 `/feed`）就是 feed。项目默认域名在国内访问需要带预览参数（`?eo_token=...&eo_time=...`），详见[已知限制](#已知限制)。
 
-### 方式 B：CLI 直传
+### CLI 直传（可选）
 
 ```bash
-cd edgeone
 npm i -g edgeone@latest          # 只需一次
 edgeone login --site china       # 会打开浏览器登录腾讯云
-edgeone makers deploy -n jandan-rss
+edgeone makers link -n <项目名>  # 关联控制台已建的项目
+edgeone makers deploy
 ```
 
 CLI **只支持直传（Upload）类型的项目**。如果同名项目是从 GitHub 导入的，会直接报错：
@@ -132,16 +127,13 @@ Deployment failed: [getOrCreateProject] Project jandan-rss exists but has
 Provider 'Github'. ... Only projects with Provider 'Upload' are supported.
 ```
 
-两种解法：换个名字（`-n jandan-rss-cli`，会新建一个直传项目），或先在控制台删掉 GitHub 项目再部署。项目一旦是 GitHub 集成类型，后续更新就走 push，不再用 CLI。
-
-因为要用 Blob 存缓存，这条路必须登录后部署，无法免登录发布。Blob 的 namespace 是首次调用时自动创建的，不用去控制台配置。
-
-**订阅地址**：部署完 CLI 会打印一个带 `?eo_token=...&eo_time=...` 的预览地址，后面拼上 `/feed.xml`（或 `/feed`）即可。
+解法：换个项目名（新建直传项目），或先在控制台删掉 GitHub 项目再部署。项目一旦是 GitHub 集成类型，后续更新走 push，不用 CLI。另外因为要用 Blob 存缓存，CLI 这条路必须登录后部署，无法免登录发布（Blob namespace 首次调用时自动建）。
 
 ### 本地调试
 
 ```bash
-cd edgeone
+npm install
+edgeone makers link -n <项目名>  # 用了 Blob，必须先关联项目，否则 dev 起不来
 edgeone makers dev               # http://127.0.0.1:8088
 ```
 
@@ -214,6 +206,7 @@ RSS 2.0：content:encoded 放全文，media:thumbnail 放缩略图
 
 - **GitHub Actions 的 cron 会延迟**，几分钟到十几分钟不等；仓库连续 60 天没有提交，定时任务会被自动暂停，去 Actions 页面点一次 *Run workflow* 即可恢复。
 - **EdgeOne 预览链接只有 3 小时**：Makers 的项目域名和部署域名从中国大陆访问必须带预览参数（`?eo_token=...`），过期即 401。这不是代码问题，境外网络直接访问项目域名不受影响；要在国内长期订阅，需在控制台「域名管理」绑定一个已备案域名。
+- **EdgeOne 部署的就是仓库根目录**：`README.md`、`jandan_rss.py` 这些也会被当成静态资源发布（都是公开内容，无所谓）。但如果你跑过 Python 生成器留下根目录的 `feed.xml`，再用 CLI 直传，这个静态文件会一起打上去、盖住动态 feed；要么先删掉它，要么走 GitHub 集成（只发布 git 里的文件，`feed*.xml` 已被 `.gitignore` 排除）。
 - **图片**：煎蛋的图以前在 `moyu.im`，有 Referer 校验会导致阅读器裂图；现在换成 `img.wangmoyu.com`，实测不带 Referer 也能加载。若哪天又加校验，可在阅读器补一条 Referer 规则，或套一层图片代理。
 - **两套部署抓到的内容偶尔差几分钟**：Actions 跑在海外，EdgeOne 跑在国内，属正常现象。
 - 官方 `/feed` 返回 403，带浏览器 UA 也一样，因此完全没有走官方源。

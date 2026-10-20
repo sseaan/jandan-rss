@@ -42,7 +42,7 @@ jobs:
       - name: Add landing page
         run: |
           mkdir -p public
-          cp site/index.html public/index.html
+          cp index.html public/index.html
 
       - uses: actions/upload-pages-artifact@v3
         with:
